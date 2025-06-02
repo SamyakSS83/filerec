@@ -22,6 +22,14 @@ filerec/
 ├── tests/                   # Test suites
 │   └── test_files/          # Test file resources
 ├── docs/                    # Documentation
+│   ├── project_status.md    # Current implementation status
+│   ├── recovery_status.md   # Status of recovery methods
+│   ├── test_results.md      # Expected test results
+│   └── ...                  # Other documentation files
+├── scripts/                 # Testing and utility scripts
+│   ├── blackbox_test.sh     # Full blackbox testing script
+│   ├── blackbox_test_simple.sh  # Simple blackbox testing script
+│   └── test.sh              # Simple signature test script
 └── build/                   # Build output (generated)
 ```
 

@@ -10,9 +10,21 @@ FileRec employs a comprehensive testing strategy to ensure reliability, performa
 
 Blackbox tests provide end-to-end validation in real-world scenarios:
 
+#### Simple Blackbox Test (Recommended)
+
+- `scripts/blackbox_test_simple.sh` - Tests recovery on a controlled test image
+- Creates an ext4 filesystem in a test image
+- Copies test files to the filesystem
+- Tests signature-based, metadata-based, and combined recovery
+- Verifies recovery results with more predictable outcomes
+- **Current Status**: Works well for verifying signature-based recovery
+
+#### Full Blackbox Test (Advanced)
+
 - `scripts/blackbox_test.sh` - Tests the complete recovery workflow on actual partitions
 - Creates and deletes files on real partitions to simulate data loss scenarios
 - Verifies successful recovery of deleted files
+- **Current Status**: Works for signature-based recovery but unreliable for metadata-based recovery
 
 ### Unit Tests
 

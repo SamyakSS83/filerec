@@ -4,3 +4,4 @@ build/
 CMakeCache.txt
 CTestTestfile.cmake
 CMakeFiles/
+test_output/

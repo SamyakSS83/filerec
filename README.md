@@ -1,16 +1,26 @@
 # FileRec - Advanced File Recovery Tool
 
-FileRec is a high-performance forensic file carving tool designed to recover deleted or lost files from disk images. It uses signature-based detection and structure validation to recover various file types even when filesystem metadata is damaged or unavailable.
+FileRec is a high-performance forensic file carving tool designed to recover deleted or lost files from disk images. It primarily uses signature-based detection and structure validation to recover various file types when filesystem metadata is damaged or unavailable.
 
 ## Features
 
-- **Multiple File Type Support**: Recovers JPEG, PNG, PDF, and ZIP/Archive files
-- **Signature-based Detection**: Uses file signatures (magic numbers) to identify file types
-- **Structure Validation**: Validates recovered files by analyzing their internal structure
-- **File System Awareness**: Can work with Ext4, NTFS, and FAT32 file systems
-- **Confidence Scoring**: Provides confidence scores for recovered files
-- **High Performance**: Optimized for fast scanning of large disk images
-- **Overlapping File Detection**: Correctly handles adjacent files and overlapping signatures
+- ✅ **Multiple File Type Support**: Recovers JPEG, PNG, PDF, and ZIP/Archive files
+- ✅ **Signature-based Detection**: Uses file signatures (magic numbers) to identify file types
+- ✅ **Structure Validation**: Validates recovered files by analyzing their internal structure
+- ⚠️ **File System Awareness**: Can detect Ext4, NTFS, and FAT32 file systems (metadata recovery in progress)
+- ✅ **Confidence Scoring**: Provides confidence scores for recovered files
+- ✅ **High Performance**: Optimized for fast scanning of large disk images with multithreading
+- ✅ **Overlapping File Detection**: Correctly handles adjacent files and overlapping signatures
+
+## Current Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Signature-based Recovery | ✅ Working | Successfully recovers JPEG, PDF, PNG, ZIP files |
+| Ext4 Metadata Recovery | ⚠️ In Progress | Can detect filesystem but not recover deleted files |
+| NTFS Metadata Recovery | ⚠️ In Progress | Can detect filesystem but not recover deleted files |
+| FAT32 Metadata Recovery | ⚠️ In Progress | Can detect filesystem but not recover deleted files |
+| Test Framework | ✅ Working | Comprehensive test suite with Google Test |
 
 ## Building from Source
 
@@ -46,7 +56,7 @@ brew install cmake openssl googletest doxygen
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/filerec.git
+git clone https://github.com/SamyakSS83/filerec.git
 cd filerec
 
 # Create build directory
@@ -67,20 +77,23 @@ ctest
 ./build/FileRecoveryTool [options] <disk_image_path> <output_directory>
 
 # Examples:
-./build/FileRecoveryTool /dev/sda1 ./recovered
-./build/FileRecoveryTool -v -t 4 -f jpg,pdf disk.img ./output
+# For best results, use signature-only mode (currently most reliable)
+./build/FileRecoveryTool -v -s /dev/sda1 ./recovered
+./build/FileRecoveryTool -v -s -t 4 -f jpg,pdf disk.img ./output
 
-# Options:
+# Standard Options:
 #   -v, --verbose           Enable verbose logging
 #   -t, --threads NUM       Number of threads to use (default: auto)
 #   -c, --chunk-size SIZE   Chunk size in MB (default: 1)
 #   -f, --file-types TYPES  Comma-separated list of file types (default: all)
-#   -m, --metadata-only     Use only metadata-based recovery
-#   -s, --signature-only    Use only signature-based recovery
+#   -s, --signature-only    Use only signature-based recovery (RECOMMENDED)
+#   -m, --metadata-only     Use only metadata-based recovery (EXPERIMENTAL)
 #   -l, --log-file FILE     Log file path (default: recovery.log)
 #   --read-only             Verify device is mounted read-only (safety check)
 #   -h, --help              Show help message
 ```
+
+> **Note**: Currently, signature-based recovery (`-s`) is the most reliable method. Metadata-based recovery is under active development.
 
 ## Architecture
 
@@ -115,15 +128,28 @@ Run tests with: `ctest` or `make test` in the build directory.
 
 ### Blackbox Testing
 
-FileRec includes a blackbox testing script that tests the tool in real-world scenarios by:
+FileRec includes two blackbox testing scripts:
 
-1. Copying sample files to an actual disk partition
-2. Creating a zip archive of the files
-3. Deleting the files
-4. Running FileRec to attempt recovery
-5. Verifying recovery results
+#### Simple Blackbox Test (Recommended)
 
-To run the blackbox test:
+This script creates a test image with a known filesystem and test files, then attempts recovery:
+
+```bash
+# Requires root privileges to mount/unmount the test image
+sudo ./scripts/blackbox_test_simple.sh
+
+# This script will:
+# 1. Create a test image with ext4 filesystem
+# 2. Copy test files to the filesystem
+# 3. Run signature-based recovery
+# 4. Run metadata-based recovery
+# 5. Run full recovery (both methods)
+# 6. Compare and analyze results
+```
+
+#### Full Blackbox Test (For Advanced Testing)
+
+A more complex test that uses real disk partitions:
 
 ```bash
 # Requires root privileges to mount/unmount partitions
@@ -131,16 +157,16 @@ sudo ./scripts/blackbox_test.sh [options] /dev/sdXY
 
 # Options:
 #  -v, --verbose     Show detailed output during testing
-#  -q, --quiet       Show minimal output (errors and summary only)
+#  -q, --quiet       Show minimal output (errors and summary only) 
 #  -h, --help        Show help message
 
 # Examples:
 sudo ./scripts/blackbox_test.sh /dev/sda1
-sudo ./scripts/blackbox_test.sh --verbose /dev/sda1
-sudo ./scripts/blackbox_test.sh --quiet /dev/sda1
 ```
 
-> **Warning**: Only run the blackbox test on partitions that do not contain important data. The test will create and delete files on the specified partition.
+> **Warning**: Only run the full blackbox test on partitions that do not contain important data. The test will create and delete files on the specified partition.
+
+> **Note**: Currently, the signature-based recovery works reliably, but metadata-based recovery is still being improved. The simple blackbox test provides the clearest verification of tool functionality.
 
 #### Troubleshooting Blackbox Tests
 
@@ -151,6 +177,18 @@ sudo ./scripts/blackbox_test.sh --quiet /dev/sda1
 - **Command Line Usage**: The script runs the tool with the correct arguments: `./build/FileRecoveryTool -v /dev/sdXY /path/to/recovery/dir`
 
 ## Development
+
+### Project Documentation
+
+For detailed information about the project, see the following documents in the `docs` directory:
+
+- [Project Status](docs/project_status.md) - Current implementation status of components
+- [Recovery Status](docs/recovery_status.md) - Status of different recovery methods
+- [Test Results](docs/test_results.md) - What to expect from tests
+- [Test Summary](docs/test_summary.md) - Overview of the test suite
+- [Blackbox Testing](docs/blackbox_testing.md) - How to run blackbox tests
+- [Project Structure](docs/project_structure.md) - Code organization
+- [Developer Guide](docs/developer_guide.md) - Guide for contributors
 
 ### Adding a New File Carver
 
@@ -166,6 +204,7 @@ sudo ./scripts/blackbox_test.sh --quiet /dev/sda1
 
 1. Create a new class implementing the `FilesystemParser` interface
 2. Implement required methods for parsing the filesystem structure
+3. Focus on both detection and deleted file recovery
 
 ### Extending the Blackbox Tester
 

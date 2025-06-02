@@ -1,10 +1,28 @@
 # Blackbox Testing for FileRec
 
-This document explains how to use the blackbox testing script to verify the end-to-end functionality of FileRec in real-world scenarios.
+This document explains how to use the blackbox testing scripts to verify the functionality of FileRec in various scenarios.
 
 ## Overview
 
-The blackbox testing script (`scripts/blackbox_test.sh`) allows testing FileRec's recovery capabilities in realistic scenarios by:
+FileRec provides two blackbox testing approaches:
+
+### 1. Simple Blackbox Test (Recommended)
+
+The `scripts/blackbox_test_simple.sh` script provides a controlled test environment by:
+
+1. Creating a test image with ext4 filesystem
+2. Copying test files to the filesystem
+3. Running three recovery methods:
+   - Signature-based recovery (`-s`)
+   - Metadata-based recovery (`-m`)
+   - Full recovery (both methods)
+4. Comparing and analyzing results
+
+This approach is more predictable and helps isolate issues with specific recovery methods.
+
+### 2. Full Blackbox Test
+
+The original `scripts/blackbox_test.sh` allows testing FileRec's recovery capabilities in more realistic scenarios by:
 
 1. Creating test files on an actual disk partition
 2. Zipping the files (to simulate file compression/archiving)
@@ -21,13 +39,24 @@ The blackbox testing script (`scripts/blackbox_test.sh`) allows testing FileRec'
 
 ## Usage
 
+### Simple Blackbox Test
+
+```bash
+# No arguments needed, creates its own test image
+sudo ./scripts/blackbox_test_simple.sh
+```
+
+The script will create a test image, populate it with files, and run all recovery methods to verify functionality.
+
+### Full Blackbox Test
+
 ```bash
 sudo ./scripts/blackbox_test.sh [partition]
 ```
 
 Where `[partition]` is the device path of the partition to use for testing (e.g., `/dev/sda1`).
 
-### Example:
+### Examples:
 
 ```bash
 sudo ./scripts/blackbox_test.sh /dev/sda1
