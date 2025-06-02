@@ -26,7 +26,7 @@ protected:
     void TearDown() override {
         // Clean up test data
         std::filesystem::remove_all(test_data_dir_);
-        std::filesystem::remove("test_zip.log");
+        // std::filesystem::remove("test_zip.log");
     }
     
     void createTestZipData() {

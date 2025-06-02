@@ -63,6 +63,14 @@ private:
     bool hasValidChunks(const Byte* data, Size size) const;
     
     /**
+     * @brief Check if PNG data contains a valid IEND chunk
+     * @param data PNG file data
+     * @param size Size of the data
+     * @return true if a valid IEND chunk is found
+     */
+    bool hasValidIendChunk(const Byte* data, Size size) const;
+    
+    /**
      * @brief Calculate CRC32 for PNG chunk validation
      * @param data Data for CRC calculation
      * @param length Length of data
