@@ -1,5 +1,0 @@
-/mnt/filerec_test/filerec_test_data/test_files.zip: Zip archive data, at least v2.0 to extract, compression method=deflate
-/mnt/filerec_test/filerec_test_data/ok.pdf: PDF document, version 1.3, 8 page(s)
-/mnt/filerec_test/filerec_test_data/normal.jpeg: JPEG image data, JFIF standard 1.01, resolution (DPI), density 300x300, segment length 16, baseline, precision 8, 866x1390, components 3
-/mnt/filerec_test/filerec_test_data/lele.png: JPEG image data, JFIF standard 1.01, aspect ratio, density 1x1, segment length 16, progressive, precision 8, 360x360, components 3
-/mnt/filerec_test/filerec_test_data/recovery.log: ASCII text

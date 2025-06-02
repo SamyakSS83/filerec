@@ -151,7 +151,7 @@ fi
 
 # Run the recovery tool
 echo "Running FileRec recovery tool on $PARTITION" | tee -a "$LOG_FILE"
-"$BUILD_DIR/FileRecoveryTool" -v "$PARTITION" "$RECOVERY_DIR" | tee -a "$LOG_FILE"
+"$BUILD_DIR/FileRecoveryTool" "$PARTITION" "$RECOVERY_DIR" | tee -a "$LOG_FILE"
 
 # Print recovery results
 echo "Recovery completed. Files recovered:" | tee -a "$LOG_FILE"
