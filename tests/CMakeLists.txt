@@ -47,6 +47,8 @@ set(TEST_SOURCES
     test_pdf_carver.cpp
     test_png_carver.cpp
     test_zip_carver.cpp
+    test_carver_integration.cpp
+    test_carver_performance.cpp
     
     # Utility tests
     test_logger.cpp

@@ -45,28 +45,43 @@ std::vector<RecoveredFile> ZipCarver::carveFiles(const Byte* data, Size size, Of
     std::vector<ZipCandidate> candidates;
     for (const auto& signature : signatures) {
         auto offsets = findPattern(data, size, signature);
+        // Only log signature counts in debug builds to avoid performance impact
+#ifdef DEBUG
         LOG_DEBUG("Signature " + std::to_string(signature[0]) + "... found at " + std::to_string(offsets.size()) + " offsets");
+#endif
         for (auto offset : offsets) {
+#ifdef DEBUG
             LOG_DEBUG("Checking candidate at offset " + std::to_string(offset));
+#endif
             if (offset + sizeof(ZipLocalFileHeader) > size) {
+#ifdef DEBUG
                 LOG_DEBUG("Offset " + std::to_string(offset) + " too close to end for header");
+#endif
                 continue;
             }
             const auto* header = reinterpret_cast<const ZipLocalFileHeader*>(data + offset);
             bool header_valid = true;
             if (!is_test_data) {
                 header_valid = validate_local_file_header(header);
+#ifdef DEBUG
                 LOG_DEBUG("Header valid at offset " + std::to_string(offset) + ": " + (header_valid ? "yes" : "no"));
+#endif
             }
             if (!header_valid) continue;
             size_t zip_size = calculate_zip_size(data + offset, size - offset);
+#ifdef DEBUG
             LOG_DEBUG("Calculated zip_size at offset " + std::to_string(offset) + ": " + std::to_string(zip_size));
+#endif
             if (zip_size == 0) {
                 if (is_test_data) {
                     zip_size = size - offset;
+#ifdef DEBUG
                     LOG_DEBUG("Test data: using fallback zip_size " + std::to_string(zip_size));
+#endif
                 } else {
+#ifdef DEBUG
                     LOG_DEBUG("Skipping candidate at offset " + std::to_string(offset) + " due to zero size");
+#endif
                     continue;
                 }
             }
@@ -81,7 +96,9 @@ std::vector<RecoveredFile> ZipCarver::carveFiles(const Byte* data, Size size, Of
             } else {
                 confidence = calculateConfidence(data + offset, zip_size);
             }
+#ifdef DEBUG
             LOG_DEBUG("Candidate at offset " + std::to_string(offset) + ", size " + std::to_string(zip_size) + ", confidence " + std::to_string(confidence));
+#endif
             candidates.push_back({offset, zip_size, confidence});
         }
     }
@@ -97,10 +114,14 @@ std::vector<RecoveredFile> ZipCarver::carveFiles(const Byte* data, Size size, Of
     for (const auto& cand : candidates) {
         size_t cand_start = cand.offset;
         size_t cand_end = cand.offset + cand.zip_size;
+#ifdef DEBUG
         LOG_DEBUG("Evaluating candidate: start=" + std::to_string(cand_start) + ", end=" + std::to_string(cand_end) + ", last_end=" + std::to_string(last_end));
+#endif
         // Only skip if there is a true overlap (not if adjacent or after)
         if (cand_start < last_end) {
+#ifdef DEBUG
             LOG_DEBUG("Skipping candidate at " + std::to_string(cand_start) + " due to overlap");
+#endif
             continue;
         }
         RecoveredFile file;
@@ -111,6 +132,7 @@ std::vector<RecoveredFile> ZipCarver::carveFiles(const Byte* data, Size size, Of
         file.is_fragmented = false;
         file.fragments = {{base_offset + cand.offset, cand.zip_size}};
         file.confidence_score = cand.confidence;
+        // Always log successful recoveries at INFO level for important user feedback
         LOG_INFO("Recovered ZIP: start=" + std::to_string(file.start_offset) + ", size=" + std::to_string(file.file_size) + ", confidence=" + std::to_string(file.confidence_score));
         recovered_files.push_back(file);
         last_end = cand_end;
@@ -368,7 +390,9 @@ size_t ZipCarver::calculate_zip_size(const uint8_t* data, size_t max_size) const
     for (size_t i = sizeof(ZipLocalFileHeader); i + 4 < max_size; ++i) {
         uint32_t sig = *reinterpret_cast<const uint32_t*>(data + i);
         if (sig == LOCAL_FILE_HEADER_SIG) {
+#ifdef DEBUG
             LOG_DEBUG("Found next ZIP signature at offset " + std::to_string(i) + ", limiting size to this boundary");
+#endif
             next_zip_offset = i;
             break;
         }
