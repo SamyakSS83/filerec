@@ -166,16 +166,34 @@ TEST_F(FileSystemDetectorTest, MultipleFilesystems) {
     // Test detection priority when multiple signatures might be present
     std::vector<uint8_t> mixed_data(4096, 0);
     
-    // Add NTFS signature
+    // Add NTFS signature and all required fields
     mixed_data[510] = 0x55;
     mixed_data[511] = 0xAA;
     memcpy(mixed_data.data() + 3, "NTFS    ", 8);
     
-    // Add EXT4 signature at correct location
-    *(uint16_t*)(mixed_data.data() + 1024 + 56) = 0xEF53;
+    // Bytes per sector for NTFS
+    *(uint16_t*)(mixed_data.data() + 11) = 512;
+    
+    // Sectors per cluster for NTFS
+    mixed_data[13] = 8;
+    
+    // Add EXT4 signature at correct location with proper fields
+    uint8_t* superblock = mixed_data.data() + 1024;
+    *(uint16_t*)(superblock + 56) = 0xEF53;  // Magic number
+    *(uint32_t*)(superblock + 0) = 1000;     // s_inodes_count
+    *(uint32_t*)(superblock + 4) = 4000;     // s_blocks_count_lo
+    
+    // IMPORTANT: This should be log2(block_size/1024), not the block size itself
+    // For 4096 block size, this should be 2 (since 4096 = 1024 * 2^2)
+    *(uint32_t*)(superblock + 24) = 2;       // s_log_block_size
     
     // Should detect the first valid filesystem found
     auto info = detector_->detect_from_data(mixed_data.data(), mixed_data.size());
+    
+    // Print detected filesystem type for debugging
+    std::cout << "Detected filesystem type: " << static_cast<int>(info.type) 
+              << " (Name: " << info.name << ")" << std::endl;
+    
     EXPECT_TRUE(info.type == FileSystemType::NTFS || info.type == FileSystemType::EXT4);
 }
 
