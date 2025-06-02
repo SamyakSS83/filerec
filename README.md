@@ -1,7 +1,11 @@
 # FileRec - Advanced File Recovery Tool
 
-FileRec is a high-performance forensic file carving tool designed to recover deleted or lost files from disk images. It primarily uses signature-based detection and structure validation to recover various file types when filesystem metadata is damaged or unavailable.
+FileRec forensic file carving tool designed to recover deleted or lost files from disk images. It primarily uses signature-based detection and structure validation to recover various file types when filesystem metadata is damaged or unavailable.
 
+I was bored and deleted a meme of my pendrive so I decided to build this ;)
+
+
+If anyone of you finds this cool, star it, or better yet send a PR and contribute to it.
 ## Features
 
 - ✅ **Multiple File Type Support**: Recovers JPEG, PNG, PDF, and ZIP/Archive files
