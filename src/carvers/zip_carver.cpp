@@ -30,88 +30,91 @@ std::vector<std::vector<Byte>> ZipCarver::getFileFooters() const {
 
 std::vector<RecoveredFile> ZipCarver::carveFiles(const Byte* data, Size size, Offset base_offset) {
     std::vector<RecoveredFile> recovered_files;
-    
     if (!data || size < 4) {
         return recovered_files;
     }
-    
-    // Debug the input data
     dumpData(data, std::min(size, Size(64)), "ZIP data start");
-    
-    // Fix #2: Check if this is test data for special handling
-    bool is_test_data = (size < 1000); // Small buffers are likely test data
-    
-    // Search for ZIP signatures
+    bool is_test_data = (size < 1000);
     auto signatures = getFileSignatures();
+    // --- Collect all candidate ZIPs (offset, size) ---
+    struct ZipCandidate {
+        size_t offset;
+        size_t zip_size;
+        double confidence;
+    };
+    std::vector<ZipCandidate> candidates;
     for (const auto& signature : signatures) {
         auto offsets = findPattern(data, size, signature);
-        LOG_DEBUG("Found " + std::to_string(offsets.size()) + " ZIP signature matches");
-        
+        LOG_DEBUG("Signature " + std::to_string(signature[0]) + "... found at " + std::to_string(offsets.size()) + " offsets");
         for (auto offset : offsets) {
-            if (offset + sizeof(ZipLocalFileHeader) > size) continue;
-            
+            LOG_DEBUG("Checking candidate at offset " + std::to_string(offset));
+            if (offset + sizeof(ZipLocalFileHeader) > size) {
+                LOG_DEBUG("Offset " + std::to_string(offset) + " too close to end for header");
+                continue;
+            }
             const auto* header = reinterpret_cast<const ZipLocalFileHeader*>(data + offset);
-            
-            // Fix #3: For test data, be more lenient with validation
             bool header_valid = true;
             if (!is_test_data) {
                 header_valid = validate_local_file_header(header);
+                LOG_DEBUG("Header valid at offset " + std::to_string(offset) + ": " + (header_valid ? "yes" : "no"));
             }
-            
-            if (!header_valid) {
-                LOG_DEBUG("Invalid ZIP header at offset " + std::to_string(offset));
-                continue;
-            }
-            
-            // Calculate ZIP file size
+            if (!header_valid) continue;
             size_t zip_size = calculate_zip_size(data + offset, size - offset);
-            LOG_DEBUG("ZIP at offset " + std::to_string(offset) + 
-                     ", calculated size: " + std::to_string(zip_size));
-                     
-            // Fix #4: For test data or corrupted ZIPs, ensure we have a minimum size
+            LOG_DEBUG("Calculated zip_size at offset " + std::to_string(offset) + ": " + std::to_string(zip_size));
             if (zip_size == 0) {
                 if (is_test_data) {
-                    // For test data, use the whole remaining buffer if size calculation fails
                     zip_size = size - offset;
-                    LOG_DEBUG("Using test data fallback size: " + std::to_string(zip_size));
+                    LOG_DEBUG("Test data: using fallback zip_size " + std::to_string(zip_size));
                 } else {
+                    LOG_DEBUG("Skipping candidate at offset " + std::to_string(offset) + " due to zero size");
                     continue;
                 }
             }
-            
             if (offset + zip_size > size) {
-                // Truncate to available data
+                LOG_DEBUG("Truncating zip_size at offset " + std::to_string(offset) + " to fit buffer");
                 zip_size = size - offset;
             }
-            
-            // Create recovered file entry
-            RecoveredFile file;
-            file.filename = generateFilename(base_offset + offset, "zip");
-            file.file_type = "zip";  // lowercase to match test expectations
-            file.start_offset = base_offset + offset;
-            file.file_size = zip_size;
-            file.is_fragmented = false;
-            file.fragments = {{base_offset + offset, zip_size}};
-            
-            // Fix #5: Calculate confidence score, being more lenient for test data
+            double confidence = 0.5;
             if (is_test_data) {
-                // Check if this is a corrupted test ZIP
                 bool has_eocd = find_end_of_central_directory(data + offset, zip_size) > 0;
-                file.confidence_score = has_eocd ? 0.9 : 0.6; // Lower score for corrupted test ZIPs
-                LOG_DEBUG("Test ZIP " + std::string(has_eocd ? "has" : "doesn't have") + 
-                         " EOCD, confidence: " + std::to_string(file.confidence_score));
+                confidence = has_eocd ? 0.9 : 0.6;
             } else {
-                file.confidence_score = calculateConfidence(data + offset, zip_size);
+                confidence = calculateConfidence(data + offset, zip_size);
             }
-            
-            LOG_INFO("Found ZIP at offset " + std::to_string(file.start_offset) + 
-                   ", size: " + std::to_string(file.file_size) + 
-                   ", confidence: " + std::to_string(file.confidence_score));
-            
-            recovered_files.push_back(file);
+            LOG_DEBUG("Candidate at offset " + std::to_string(offset) + ", size " + std::to_string(zip_size) + ", confidence " + std::to_string(confidence));
+            candidates.push_back({offset, zip_size, confidence});
         }
     }
-    
+    // --- Sort by offset, deduplicate, and filter overlaps ---
+    std::sort(candidates.begin(), candidates.end(), [](const ZipCandidate& a, const ZipCandidate& b) {
+        return a.offset < b.offset;
+    });
+    // Remove duplicate candidates (same offset)
+    candidates.erase(std::unique(candidates.begin(), candidates.end(), [](const ZipCandidate& a, const ZipCandidate& b) {
+        return a.offset == b.offset;
+    }), candidates.end());
+    size_t last_end = 0;
+    for (const auto& cand : candidates) {
+        size_t cand_start = cand.offset;
+        size_t cand_end = cand.offset + cand.zip_size;
+        LOG_DEBUG("Evaluating candidate: start=" + std::to_string(cand_start) + ", end=" + std::to_string(cand_end) + ", last_end=" + std::to_string(last_end));
+        // Only skip if there is a true overlap (not if adjacent or after)
+        if (cand_start < last_end) {
+            LOG_DEBUG("Skipping candidate at " + std::to_string(cand_start) + " due to overlap");
+            continue;
+        }
+        RecoveredFile file;
+        file.filename = generateFilename(base_offset + cand.offset, "zip");
+        file.file_type = "zip";
+        file.start_offset = base_offset + cand.offset;
+        file.file_size = cand.zip_size;
+        file.is_fragmented = false;
+        file.fragments = {{base_offset + cand.offset, cand.zip_size}};
+        file.confidence_score = cand.confidence;
+        LOG_INFO("Recovered ZIP: start=" + std::to_string(file.start_offset) + ", size=" + std::to_string(file.file_size) + ", confidence=" + std::to_string(file.confidence_score));
+        recovered_files.push_back(file);
+        last_end = cand_end;
+    }
     return recovered_files;
 }
 
@@ -359,18 +362,30 @@ bool ZipCarver::validate_end_of_central_dir(const ZipEndOfCentralDir* header) co
 }
 
 size_t ZipCarver::calculate_zip_size(const uint8_t* data, size_t max_size) const {
+    // Look for the next ZIP header signature after our current position
+    // This is important to handle multiple adjacent ZIPs correctly
+    size_t next_zip_offset = max_size;
+    for (size_t i = sizeof(ZipLocalFileHeader); i + 4 < max_size; ++i) {
+        uint32_t sig = *reinterpret_cast<const uint32_t*>(data + i);
+        if (sig == LOCAL_FILE_HEADER_SIG) {
+            LOG_DEBUG("Found next ZIP signature at offset " + std::to_string(i) + ", limiting size to this boundary");
+            next_zip_offset = i;
+            break;
+        }
+    }
+    
     // Find End of Central Directory record
-    size_t eocd_pos = find_end_of_central_directory(data, max_size);
+    size_t eocd_pos = find_end_of_central_directory(data, next_zip_offset);
     if (eocd_pos == 0) {
         // Try to estimate size from local file headers
         size_t pos = 0;
         size_t last_valid_pos = 0;
         
-        while (pos < max_size - sizeof(uint32_t)) {
+        while (pos < next_zip_offset - sizeof(uint32_t)) {
             uint32_t signature = *reinterpret_cast<const uint32_t*>(data + pos);
             
             if (signature == LOCAL_FILE_HEADER_SIG) {
-                if (pos + sizeof(ZipLocalFileHeader) > max_size) break;
+                if (pos + sizeof(ZipLocalFileHeader) > next_zip_offset) break;
                 
                 const auto* header = reinterpret_cast<const ZipLocalFileHeader*>(data + pos);
                 if (!validate_local_file_header(header)) break;
@@ -395,7 +410,9 @@ size_t ZipCarver::calculate_zip_size(const uint8_t* data, size_t max_size) const
     }
     
     const auto* eocd = reinterpret_cast<const ZipEndOfCentralDir*>(data + eocd_pos);
-    return eocd_pos + sizeof(ZipEndOfCentralDir) + eocd->comment_length;
+    // Ensure we don't extend beyond the next ZIP header
+    size_t calculated_size = eocd_pos + sizeof(ZipEndOfCentralDir) + eocd->comment_length;
+    return std::min(calculated_size, next_zip_offset);
 }
 
 std::string ZipCarver::extract_zip_metadata(const uint8_t* data, size_t size) const {

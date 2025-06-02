@@ -67,6 +67,7 @@ std::vector<RecoveredFile> PngCarver::carveFiles(
         file.start_offset = base_offset + match_offset;
         file.file_size = png_size;
         file.is_fragmented = false;
+        file.fragments = {{file.start_offset, file.file_size}};
         
         // Special case for test data - need to handle corrupted test data differently
         if (is_test_data) {
