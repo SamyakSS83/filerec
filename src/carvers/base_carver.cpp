@@ -83,6 +83,25 @@ std::string BaseCarver::generateFilename(Offset offset, const std::string& file_
     return ss.str();
 }
 
+// Add this method to help debug file carver issues
+void BaseCarver::dumpData(const Byte* data, Size size, const std::string& prefix) const {
+    std::stringstream ss;
+    ss << prefix << " (size=" << size << "): ";
+    
+    const size_t max_bytes = std::min(size, Size(32)); // Show up to 32 bytes
+    for (size_t i = 0; i < max_bytes; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') 
+           << static_cast<int>(data[i]) << " ";
+    }
+    
+    if (size > max_bytes) {
+        ss << "...";
+    }
+    
+    LOG_DEBUG(ss.str());
+}
+
+// Improve confidence scoring
 double BaseCarver::calculateConfidenceScore(
     bool has_valid_header,
     bool has_valid_footer,
@@ -90,6 +109,11 @@ double BaseCarver::calculateConfidenceScore(
     bool structure_valid
 ) const {
     double score = 0.0;
+    
+    LOG_DEBUG("Calculating confidence - header:" + std::to_string(has_valid_header) + 
+              " footer:" + std::to_string(has_valid_footer) + 
+              " entropy:" + std::to_string(entropy_score) + 
+              " structure:" + std::to_string(structure_valid));
     
     // Header validity (40% weight)
     if (has_valid_header) {
@@ -114,6 +138,7 @@ double BaseCarver::calculateConfidenceScore(
         score += 0.2;
     }
     
+    LOG_DEBUG("Final confidence score: " + std::to_string(score));
     return std::min(score, 1.0);
 }
 

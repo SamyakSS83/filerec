@@ -62,6 +62,14 @@ protected:
     std::string generateFilename(Offset offset, const std::string& file_type) const;
     
     /**
+     * @brief Dump binary data to log for debugging
+     * @param data Pointer to the data to dump
+     * @param size Size of the data
+     * @param prefix Prefix message for the log entry
+     */
+    void dumpData(const Byte* data, Size size, const std::string& prefix) const;
+    
+    /**
      * @brief Calculate confidence score based on multiple factors
      * @param has_valid_header Header validation result
      * @param has_valid_footer Footer validation result (if applicable)

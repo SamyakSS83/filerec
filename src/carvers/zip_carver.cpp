@@ -9,7 +9,7 @@ namespace FileRecovery {
 ZipCarver::ZipCarver() = default;
 
 std::vector<std::string> ZipCarver::getSupportedTypes() const {
-    return {"zip", "jar", "apk", "docx", "xlsx", "pptx"};
+    return {"ZIP", "JAR", "APK", "DOCX", "XLSX", "PPTX"}; // Change to uppercase
 }
 
 std::vector<std::vector<Byte>> ZipCarver::getFileSignatures() const {

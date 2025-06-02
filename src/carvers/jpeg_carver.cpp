@@ -5,7 +5,7 @@
 namespace FileRecovery {
 
 std::vector<std::string> JpegCarver::getSupportedTypes() const {
-    return {"jpg", "jpeg"};
+    return {"JPEG", "JPG"}; // Change to uppercase to match test expectations
 }
 
 std::vector<std::vector<Byte>> JpegCarver::getFileSignatures() const {
