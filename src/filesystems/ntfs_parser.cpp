@@ -2,6 +2,7 @@
 #include "utils/logger.h"
 #include <cstring>
 #include <algorithm>
+#include <numeric> // For std::accumulate
 
 namespace FileRecovery {
 
@@ -118,18 +119,19 @@ std::vector<RecoveredFile> NtfsParser::parse_mft_records(const uint8_t* data, si
             continue;
         }
         
-        // Skip if record is not in use
-        if (!(record->flags & MFT_RECORD_IN_USE)) {
-            current_offset += record_size;
-            record_count++;
-            continue;
-        }
+        // Process both in use and deleted files
+        bool is_deleted = !(record->flags & MFT_RECORD_IN_USE);
         
         // Skip directories for now (focus on files)
         if (record->flags & MFT_RECORD_IS_DIRECTORY) {
             current_offset += record_size;
             record_count++;
             continue;
+        }
+        
+        // If record is deleted, log it for debugging
+        if (is_deleted) {
+            LOG_DEBUG("Found deleted MFT record at offset " + std::to_string(current_offset));
         }
         
         auto file_entry = parse_mft_record_to_file(record, data + current_offset, boot, partition_offset);
@@ -164,9 +166,15 @@ RecoveredFile NtfsParser::parse_mft_record_to_file(const MftRecord* record, cons
         entry.is_fragmented = data_locations.size() > 1;
     }
     
-    // Set confidence based on deletion status
-    bool is_deleted = (record->sequence_number > 1); // Rough heuristic
+    // Check if record is marked as deleted in MFT
+    bool is_deleted = !(record->flags & MFT_RECORD_IN_USE) || (record->sequence_number > 1);
     entry.confidence_score = is_deleted ? 0.7 : 0.95;
+    
+    // For deleted files, prefix filename with "DELETED_"
+    if (is_deleted) {
+        entry.filename = "DELETED_" + entry.filename;
+        LOG_DEBUG("Found deleted file: " + entry.filename + ", size: " + std::to_string(entry.file_size));
+    }
     
     // Set file type based on extension
     if (!entry.filename.empty()) {
@@ -181,7 +189,10 @@ RecoveredFile NtfsParser::parse_mft_record_to_file(const MftRecord* record, cons
 
 std::string NtfsParser::extract_filename_attribute(const uint8_t* record_data, size_t record_size) {
     size_t offset = sizeof(MftRecord);
+    std::string best_filename = "unknown_file";
+    bool found_long_name = false;
     
+    // We'll check all filename attributes and prioritize long filenames over short ones
     while (offset + sizeof(AttributeHeader) < record_size) {
         const auto* attr = reinterpret_cast<const AttributeHeader*>(record_data + offset);
         
@@ -192,21 +203,59 @@ std::string NtfsParser::extract_filename_attribute(const uint8_t* record_data, s
         if (attr->type == AT_FILE_NAME && attr->length > 0) {
             if (attr->non_resident_flag == 0) { // Resident attribute
                 size_t value_offset = offset + attr->resident.value_offset;
-                if (value_offset + 66 <= record_size) { // Minimum filename attribute size
-                    // Skip the filename attribute header (66 bytes) and get the name
-                    const uint16_t* name_unicode = reinterpret_cast<const uint16_t*>(record_data + value_offset + 66);
-                    uint8_t name_length = record_data[value_offset + 64]; // Name length at offset 64
+                
+                // Ensure we have enough space for the filename attribute header
+                if (value_offset + 66 <= record_size) {
+                    // Structure of $FILENAME attribute:
+                    // 0-7: Parent directory reference
+                    // 8-15: Creation time
+                    // 16-23: Last data modification time
+                    // 24-31: Last MFT modification time
+                    // 32-39: Last access time
+                    // 40-47: Allocated size
+                    // 48-55: Real size
+                    // 56-59: Flags
+                    // 60-63: Reparse/EA info
+                    // 64: Filename length (in characters)
+                    // 65: Namespace (POSIX, Win32, DOS, Win32+DOS)
+                    // 66+: Filename (Unicode)
                     
-                    if (name_length > 0 && name_length < 256) {
+                    uint8_t name_length = record_data[value_offset + 64]; // Name length at offset 64
+                    uint8_t namespace_type = record_data[value_offset + 65]; // Namespace
+                    
+                    if (name_length > 0 && name_length < 256 &&
+                        value_offset + 66 + (name_length * 2) <= record_size) {
+                        
+                        // Get Unicode filename
+                        const uint16_t* name_unicode = reinterpret_cast<const uint16_t*>(record_data + value_offset + 66);
                         std::string filename;
+                        
+                        // Convert to ASCII (UTF-8 would be better but requires more code)
                         for (int i = 0; i < name_length; i++) {
-                            char c = static_cast<char>(name_unicode[i] & 0xFF);
-                            if (c >= 32 && c < 127) { // Printable ASCII
-                                filename += c;
+                            // Get UTF-16 character (handle byte order)
+                            uint16_t unicode_char = name_unicode[i];
+                            
+                            // Simple conversion of printable ASCII range
+                            if (unicode_char >= 32 && unicode_char < 127) {
+                                filename += static_cast<char>(unicode_char);
+                            } else if (unicode_char < 32) {
+                                // Special characters, replace with underscore
+                                filename += '_';
+                            } else {
+                                // For non-ASCII, use a placeholder
+                                filename += '?';
                             }
                         }
+                        
                         if (!filename.empty()) {
-                            return filename;
+                            // Namespace type 2 or 3 is typically a Win32 long name (preferred)
+                            if ((namespace_type == 2 || namespace_type == 3) && !found_long_name) {
+                                best_filename = filename;
+                                found_long_name = true;
+                            } else if (!found_long_name) {
+                                // DOS 8.3 name, use only if we haven't found a long name
+                                best_filename = filename;
+                            }
                         }
                     }
                 }
@@ -217,7 +266,7 @@ std::string NtfsParser::extract_filename_attribute(const uint8_t* record_data, s
         offset += attr->length;
     }
     
-    return "unknown_file";
+    return best_filename;
 }
 
 uint64_t NtfsParser::extract_file_size_attribute(const uint8_t* record_data, size_t record_size) {
@@ -250,6 +299,10 @@ std::vector<std::pair<Offset, Size>> NtfsParser::extract_data_runs(const uint8_t
     std::vector<std::pair<Offset, Size>> locations;
     size_t offset = sizeof(MftRecord);
     uint32_t cluster_size = get_cluster_size(boot);
+    bool is_deleted = !(reinterpret_cast<const MftRecord*>(record_data)->flags & MFT_RECORD_IN_USE);
+    
+    // For deleted files, we may need to check more attributes
+    int data_attrs_found = 0;
     
     while (offset + sizeof(AttributeHeader) < record_size) {
         const auto* attr = reinterpret_cast<const AttributeHeader*>(record_data + offset);
@@ -259,27 +312,65 @@ std::vector<std::pair<Offset, Size>> NtfsParser::extract_data_runs(const uint8_t
         }
         
         if (attr->type == AT_DATA && attr->length > 0) {
+            // Log data attribute found - useful for debugging
+            LOG_DEBUG("Found DATA attribute at offset " + std::to_string(offset) + 
+                      ", resident: " + std::to_string(attr->non_resident_flag == 0));
+            
+            // Handle according to residence status
             if (attr->non_resident_flag == 0) { // Resident data
                 size_t data_offset = offset + attr->resident.value_offset;
-                if (data_offset < record_size) {
+                if (data_offset + attr->resident.value_length <= record_size) {
+                    LOG_DEBUG("Found resident data of size " + std::to_string(attr->resident.value_length));
                     locations.push_back({partition_offset + data_offset, attr->resident.value_length});
+                    data_attrs_found++;
                 }
             } else { // Non-resident data
                 size_t run_list_offset = offset + attr->non_resident_data.run_list_offset;
                 if (run_list_offset < record_size) {
+                    LOG_DEBUG("Processing non-resident data, size: " + 
+                              std::to_string(attr->non_resident_data.data_size));
+                    
+                    // Parse the run list
                     auto clusters = parse_data_runs(record_data + run_list_offset,
                                                   record_size - run_list_offset,
                                                   cluster_size, partition_offset);
+                    
+                    // Process recovered clusters
+                    uint64_t remaining_size = attr->non_resident_data.data_size;
                     for (uint64_t cluster_addr : clusters) {
-                        locations.push_back({cluster_addr, cluster_size});
+                        uint64_t fragment_size = std::min(static_cast<uint64_t>(cluster_size), remaining_size);
+                        if (fragment_size > 0) {
+                            locations.push_back({cluster_addr, fragment_size});
+                            remaining_size -= fragment_size;
+                        }
                     }
+                    
+                    data_attrs_found++;
                 }
             }
-            break; // Found data attribute
+            
+            // For regular files, one $DATA attribute is enough
+            // For deleted files, we try to get as much as possible
+            if (!is_deleted || data_attrs_found >= 3) {
+                break;
+            }
         }
         
+        // Safety check
         if (attr->length == 0) break;
         offset += attr->length;
+    }
+    
+    if (locations.empty()) {
+        LOG_DEBUG("No data runs found for file");
+    } else {
+        LOG_DEBUG("Found " + std::to_string(locations.size()) + 
+                  " data fragments totaling " + 
+                  std::to_string(std::accumulate(locations.begin(), locations.end(), 0ULL, 
+                                              [](uint64_t sum, const auto& loc) { 
+                                                  return sum + loc.second; 
+                                              })) + 
+                  " bytes");
     }
     
     return locations;
@@ -307,9 +398,9 @@ std::vector<uint64_t> NtfsParser::parse_data_runs(const uint8_t* run_data, size_
                                                   uint32_t cluster_size, uint64_t partition_offset) {
     std::vector<uint64_t> clusters;
     
-    // Simplified data run parsing
-    // In a full implementation, this would properly decode the run list format
+    // Enhanced data run parsing for better handling of fragmented files
     size_t offset = 0;
+    int64_t last_cluster_offset = 0;  // Keep track of last cluster offset for relative positioning
     
     while (offset < run_length && run_data[offset] != 0) {
         uint8_t header = run_data[offset++];
@@ -318,31 +409,60 @@ std::vector<uint64_t> NtfsParser::parse_data_runs(const uint8_t* run_data, size_
         uint8_t length_bytes = header & 0x0F;
         uint8_t offset_bytes = (header >> 4) & 0x0F;
         
-        if (length_bytes == 0 || offset_bytes == 0) break;
-        if (offset + length_bytes + offset_bytes > run_length) break;
+        // Validate byte counts to avoid buffer overruns
+        if (length_bytes == 0) break;
+        if (offset + length_bytes > run_length) break;
+        if (offset_bytes > 0 && offset + length_bytes + offset_bytes > run_length) break;
         
-        // Extract run length (simplified)
+        // Extract run length
         uint64_t run_clusters = 0;
         for (int i = 0; i < length_bytes; i++) {
             run_clusters |= static_cast<uint64_t>(run_data[offset + i]) << (i * 8);
         }
         offset += length_bytes;
         
-        // Extract cluster offset (simplified)
-        int64_t cluster_offset = 0;
-        for (int i = 0; i < offset_bytes; i++) {
-            cluster_offset |= static_cast<int64_t>(run_data[offset + i]) << (i * 8);
+        // Calculate current LCN (for non-sparse runs)
+        if (offset_bytes > 0) {
+            // Extract the cluster offset (handle signed value correctly for relative positioning)
+            int64_t cluster_offset_value = 0;
+            for (int i = 0; i < offset_bytes; i++) {
+                cluster_offset_value |= static_cast<uint64_t>(run_data[offset + i]) << (i * 8);
+            }
+            
+            // Sign extend if highest bit is set
+            if (run_data[offset + offset_bytes - 1] & 0x80) {
+                uint64_t sign_bits = ~0ULL << (offset_bytes * 8);
+                cluster_offset_value |= sign_bits;
+            }
+            
+            // Update the last LCN for relative addressing
+            last_cluster_offset += cluster_offset_value;
+            offset += offset_bytes;
+            
+            // For deleted files, the clusters may already be reallocated
+            // but we attempt to recover them anyway
+            uint64_t start_cluster_offset = partition_offset + (last_cluster_offset * cluster_size);
+            
+            // Add each cluster to our list
+            for (uint64_t i = 0; i < run_clusters && i < 10000; i++) {
+                clusters.push_back(start_cluster_offset + (i * cluster_size));
+            }
+            
+            // Add debug information about data runs
+            LOG_DEBUG("Data run: LCN=" + std::to_string(last_cluster_offset) + 
+                      ", clusters=" + std::to_string(run_clusters));
+        } else {
+            // This is a sparse run (no disk allocation)
+            LOG_DEBUG("Sparse data run found: clusters=" + std::to_string(run_clusters));
+            // For sparse runs, we can't recover the data as it's not on disk
+            offset += offset_bytes;
         }
-        offset += offset_bytes;
         
-        // Add clusters to result
-        uint64_t start_cluster = partition_offset + cluster_offset * cluster_size;
-        for (uint64_t i = 0; i < run_clusters && i < 1000; i++) {
-            clusters.push_back(start_cluster + i * cluster_size);
+        // Safety limit
+        if (clusters.size() > 50000) {
+            LOG_WARNING("Too many clusters in data run, truncating");
+            break;
         }
-        
-        // Limit number of runs processed
-        if (clusters.size() > 10000) break;
     }
     
     return clusters;

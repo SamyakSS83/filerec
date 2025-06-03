@@ -87,6 +87,34 @@ public:
         uint8_t file_type;
         char name[0];
     } __attribute__((packed));
+    
+    // Group descriptor structure for ext4
+    struct Ext4GroupDesc {
+        uint32_t bg_block_bitmap_lo;     // Block containing block bitmap
+        uint32_t bg_inode_bitmap_lo;     // Block containing inode bitmap
+        uint32_t bg_inode_table_lo;      // Block containing inode table
+        uint16_t bg_free_blocks_count_lo; // Free blocks count
+        uint16_t bg_free_inodes_count_lo; // Free inodes count
+        uint16_t bg_used_dirs_count_lo;   // Directories count
+        uint16_t bg_flags;               // Flags
+        uint32_t bg_exclude_bitmap_lo;    // Snapshot exclusion bitmap
+        uint16_t bg_block_bitmap_csum_lo; // Block bitmap checksum
+        uint16_t bg_inode_bitmap_csum_lo; // Inode bitmap checksum
+        uint16_t bg_unused;              // Unused
+        uint16_t bg_checksum;            // Group descriptor checksum
+        // 64-bit fields (s_desc_size >= 64)
+        uint32_t bg_block_bitmap_hi;
+        uint32_t bg_inode_bitmap_hi;
+        uint32_t bg_inode_table_hi;
+        uint16_t bg_free_blocks_count_hi;
+        uint16_t bg_free_inodes_count_hi;
+        uint16_t bg_used_dirs_count_hi;
+        uint16_t bg_itable_unused_hi;
+        uint32_t bg_exclude_bitmap_hi;
+        uint16_t bg_block_bitmap_csum_hi;
+        uint16_t bg_inode_bitmap_csum_hi;
+        uint32_t bg_reserved;
+    } __attribute__((packed));
 
     static constexpr uint16_t EXT4_MAGIC = 0xEF53;
     static constexpr size_t SUPERBLOCK_OFFSET = 1024;
@@ -96,6 +124,7 @@ public:
     static constexpr uint8_t EXT4_FT_REG_FILE = 1;
     static constexpr uint8_t EXT4_FT_DIR = 2;
     static constexpr uint8_t EXT4_FT_SYMLINK = 7;
+    static constexpr uint8_t EXT4_FT_UNKNOWN = 0;
 
     bool validate_superblock(const Ext4Superblock* sb) const;
     std::vector<RecoveredFile> parse_deleted_inodes(const uint8_t* data, size_t size,
@@ -103,6 +132,18 @@ public:
     
     uint64_t estimate_inode_table_offset(uint32_t group, const Ext4Superblock* sb) const;
     bool is_deleted_inode(const Ext4Inode* inode) const;
+    
+    // Helper methods
+    uint32_t get_block_size(const Ext4Superblock* sb) const;
+    uint64_t get_group_desc_offset(const Ext4Superblock* sb) const;
+    uint64_t get_inode_table_offset(uint32_t group, const Ext4Superblock* sb, const uint8_t* data, size_t size) const;
+    std::string detect_file_type(const uint8_t* data, size_t size) const;
+    
+    // Feature flags
+    static constexpr uint32_t EXT4_FEATURE_INCOMPAT_64BIT = 0x0080;
+    
+    // Inode flags
+    static constexpr uint32_t EXT4_EXTENTS_FL = 0x00080000;
 };
 
 } // namespace FileRecovery

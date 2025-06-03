@@ -5,3 +5,4 @@ CMakeCache.txt
 CTestTestfile.cmake
 CMakeFiles/
 test_output/
+filesystem_analysis/
