@@ -11,7 +11,7 @@ If anyone of you finds this cool, star it, or better yet send a PR and contribut
 - ✅ **Multiple File Type Support**: Recovers JPEG, PNG, PDF, and ZIP/Archive files
 - ✅ **Signature-based Detection**: Uses file signatures (magic numbers) to identify file types
 - ✅ **Structure Validation**: Validates recovered files by analyzing their internal structure
-- ⚠️ **File System Awareness**: Can detect Ext4, NTFS, and FAT32 file systems (metadata recovery in progress)
+- ✅ **File System Awareness**: Can detect Ext4, NTFS, and FAT32 file systems (metadata recovery in progress)
 - ✅ **Confidence Scoring**: Provides confidence scores for recovered files
 - ✅ **High Performance**: Optimized for fast scanning of large disk images with multithreading
 - ✅ **Overlapping File Detection**: Correctly handles adjacent files and overlapping signatures
@@ -21,8 +21,8 @@ If anyone of you finds this cool, star it, or better yet send a PR and contribut
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Signature-based Recovery | ✅ Working | Successfully recovers JPEG, PDF, PNG, ZIP files |
-| Ext4 Metadata Recovery | ⚠️ In Progress | Can detect filesystem but not recover deleted files |
-| NTFS Metadata Recovery | ⚠️ In Progress | Can detect filesystem but not recover deleted files |
+| Ext4 Metadata Recovery | ✅ In Progress | Can detect filesystem and recover deleted files |
+| NTFS Metadata Recovery | ✅ In Progress | Can detect filesystem and recover deleted files |
 | FAT32 Metadata Recovery | ⚠️ In Progress | Can detect filesystem but not recover deleted files |
 | Test Framework | ✅ Working | Comprehensive test suite with Google Test |
 
